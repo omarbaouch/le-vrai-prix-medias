@@ -1,0 +1,32 @@
+name: Publier les fichiers d'une vidéo
+
+# Recolle les morceaux (<100 Mo, limite GitHub) de videos/<slug>/ en un seul MP4
+# et le publie avec la miniature dans la Release <slug> (lien public pour Metricool).
+on:
+  push:
+    branches: [main]
+    paths: ['videos/**']
+
+permissions:
+  contents: write
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Recoller et publier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for d in $(git diff --name-only HEAD~1 HEAD -- videos | cut -d/ -f2 | sort -u); do
+            [ -d "videos/$d" ] || continue
+            mkdir -p out
+            cat videos/$d/video.part* > "out/$d.mp4"
+            ( cd videos/$d && sha256sum -c video.sha256 --status ) 2>/dev/null || true
+            echo "$(sha256sum out/$d.mp4 | cut -d' ' -f1)  $d.mp4"
+            gh release delete "$d" --yes --cleanup-tag 2>/dev/null || true
+            gh release create "$d" "out/$d.mp4" videos/$d/miniature.jpg --title "$d" --notes "Fichiers publics de la vidéo $d."
+          done
